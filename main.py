@@ -2,6 +2,7 @@ import os
 import sys
 import tempfile
 import fnmatch
+import magic  # to determine file types
 from git import Repo, GitCommandError
 from urllib.parse import urlparse
 
@@ -21,7 +22,12 @@ def clone_repository(repo_url: str, local_dir: str) -> None:
 
 def load_gitignore_patterns(local_dir: str) -> list:
     gitignore_file = os.path.join(local_dir, ".gitignore")
-    patterns = []
+    patterns = [
+        ".git",
+        "node_modules",
+        "package-lock.json",
+        "yarn.lock",
+    ]
     if os.path.exists(gitignore_file):
         with open(gitignore_file, "r") as file:
             for line in file:
@@ -35,7 +41,8 @@ def generate_tree_diagram(local_dir: str, output_file: str) -> None:
     gitignore_patterns = load_gitignore_patterns(local_dir)
     with open(output_file, "w") as f:
         for root, dirs, files in os.walk(local_dir):
-            if ".git" in root or any(fnmatch.fnmatch(root, pattern) for pattern in gitignore_patterns):
+            if any(fnmatch.fnmatch(root, pattern) for pattern in gitignore_patterns):
+                dirs[:] = []  # Modifying dirs in-place will prune the walked directories
                 continue
             level = root.replace(local_dir, "").count(os.sep)
             indent = " " * 4 * level
@@ -51,14 +58,16 @@ def generate_consolidated_file(local_dir: str, output_file: str) -> None:
     gitignore_patterns = load_gitignore_patterns(local_dir)
     with open(output_file, "w") as f:
         for root, dirs, files in os.walk(local_dir):
-            if ".git" in root:
-                continue  # ignore .git directory
+            if any(fnmatch.fnmatch(root, pattern) for pattern in gitignore_patterns):
+                dirs[:] = []  # Modifying dirs in-place will prune the walked directories
+                continue
             for file in files:
                 file_path = os.path.join(root, file)
                 relative_path = os.path.relpath(file_path, local_dir)
                 if any(fnmatch.fnmatch(relative_path, pattern) for pattern in gitignore_patterns):
                     continue  # ignore this file
-                if not (file_path.endswith(".png") or file_path.endswith(".jpg") or file_path.endswith(".jpeg")):  # exclude image files
+                # Exclude binary files
+                if magic.from_file(file_path, mime=True).startswith('text'):
                     f.write(f"\n\n{'=' * 80}\n{file_path}\n{'=' * 80}\n\n")
                     with open(file_path, "r", errors="ignore") as code_file:
                         f.write(code_file.read())
