@@ -41,15 +41,18 @@ def generate_tree_diagram(local_dir: str, output_file: str) -> None:
     gitignore_patterns = load_gitignore_patterns(local_dir)
     with open(output_file, "w") as f:
         for root, dirs, files in os.walk(local_dir):
-            if any(fnmatch.fnmatch(root, pattern) for pattern in gitignore_patterns):
-                dirs[:] = []  # Modifying dirs in-place will prune the walked directories
+            relative_root = os.path.relpath(root, local_dir)
+            if any(fnmatch.fnmatch(relative_root, pattern) for pattern in gitignore_patterns):
                 continue
-            level = root.replace(local_dir, "").count(os.sep)
+            level = relative_root.count(os.sep)
             indent = " " * 4 * level
             f.write(f"{indent}{os.path.basename(root)}\n")
             sub_indent = " " * 4 * (level + 1)
             for file in files:
-                if any(fnmatch.fnmatch(file, pattern) for pattern in gitignore_patterns):
+                if file.endswith('.sample'):  # Ignore sample files
+                    continue
+                relative_file_path = os.path.join(relative_root, file)
+                if any(fnmatch.fnmatch(relative_file_path, pattern) for pattern in gitignore_patterns):
                     continue
                 f.write(f"{sub_indent}{file}\n")
 
@@ -58,17 +61,16 @@ def generate_consolidated_file(local_dir: str, output_file: str) -> None:
     gitignore_patterns = load_gitignore_patterns(local_dir)
     with open(output_file, "w") as f:
         for root, dirs, files in os.walk(local_dir):
-            if any(fnmatch.fnmatch(root, pattern) for pattern in gitignore_patterns):
-                dirs[:] = []  # Modifying dirs in-place will prune the walked directories
-                continue
             for file in files:
+                if file.endswith('.sample'):  # Ignore sample files
+                    continue
                 file_path = os.path.join(root, file)
-                relative_path = os.path.relpath(file_path, local_dir)
-                if any(fnmatch.fnmatch(relative_path, pattern) for pattern in gitignore_patterns):
+                relative_file_path = os.path.relpath(file_path, local_dir)
+                if any(fnmatch.fnmatch(relative_file_path, pattern) for pattern in gitignore_patterns):
                     continue  # ignore this file
                 # Exclude binary files
                 if magic.from_file(file_path, mime=True).startswith('text'):
-                    f.write(f"\n\n{'=' * 80}\n{file_path}\n{'=' * 80}\n\n")
+                    f.write(f"\n\n---\n{relative_file_path}\n---\n\n")  # Shortened separator
                     with open(file_path, "r", errors="ignore") as code_file:
                         f.write(code_file.read())
 
