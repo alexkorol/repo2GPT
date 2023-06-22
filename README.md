@@ -11,8 +11,6 @@ With the virtual environment activated, install the packages listed in `requirem
 pip install -r requirements.txt
 ```
 
-Note: If you're running this on a Windows system, you might need to replace `python-magic==0.4.22` with `python-magic-bin==0.4.14` in `requirements.txt` before running the `pip install -r requirements.txt` command. As of recent updates, you may also need to install the `filetype` package for identifying file types correctly.
-
 ...
 
 ## Usage
