@@ -21,7 +21,7 @@ http://www.python.org/getit/
 To get started, clone the repository to your local machine:
 
 ```bash
-git clone https://github.com/your_username/repo2gpt.git
+git clone https://github.com/alexkorol/repo2gpt.git
 cd repo2gpt
 ```
 
