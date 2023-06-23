@@ -53,7 +53,7 @@ def process_file(file_path: str) -> str:
     if any(fnmatch.fnmatch(relative_file_path, pattern) for pattern in gitignore_patterns):
         return ''  # ignore this file
     try:
-        with open(file_path, "r", encoding="utf-8") as code_file:
+        with open(file_path, "r", encoding="utf-8", errors='ignore') as code_file:
             return f"\n\n---\n{relative_file_path}\n---\n\n" + code_file.read()
     except UnicodeDecodeError:
         return f"Could not read the file {relative_file_path} because it is not a text file.\n"
