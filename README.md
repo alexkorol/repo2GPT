@@ -5,7 +5,7 @@ Repo2GPT is a Python application that clones a GitHub repository and generates a
 
 ### Install the Required Packages:
 
-With the virtual environment activated, install the packages listed in `requirements.txt`:
+With the virtual environment activated (optional), install the packages listed in `requirements.txt`:
 
 ```bash
 pip install -r requirements.txt
