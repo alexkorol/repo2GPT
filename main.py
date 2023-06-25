@@ -59,6 +59,14 @@ def process_file(file_path: str) -> str:
         return f"Could not read the file {relative_file_path} because it is not a text file.\n"
     except Exception as e:
         return f"An error occurred while reading the file {relative_file_path}. The error is as follows:\n{str(e)}\n"
+    
+def process_repository(local_dir: str) -> None:
+    tree_diagram_file = "tree_diagram.txt"
+    consolidated_file = "consolidated_code.txt"
+    generate_tree_diagram(local_dir, tree_diagram_file)
+    generate_consolidated_file(local_dir, consolidated_file)
+    print(f"Tree diagram generated: {tree_diagram_file}")
+    print(f"Consolidated code file generated: {consolidated_file}")
 
 def generate_consolidated_file(local_dir: str, output_file: str) -> None:
     """Generates a consolidated text file containing all the code files in the repository."""
@@ -146,22 +154,22 @@ def generate_tree_diagram(local_dir: str, output_file: str) -> None:
                     continue
                 f.write(f"{sub_indent}{file}\n")
 
-def main(repo_url: str) -> None:
+def main(input_path: str) -> None:
     """Entry point of the application."""
-    with tempfile.TemporaryDirectory() as temp_dir:
-        local_dir = os.path.join(temp_dir, "repo")
-        clone_repository(repo_url, local_dir)
-        tree_diagram_file = "tree_diagram.txt"
-        consolidated_file = "consolidated_code.txt"
-        generate_tree_diagram(local_dir, tree_diagram_file)
-        generate_consolidated_file(local_dir, consolidated_file)
-        print(f"Tree diagram generated: {tree_diagram_file}")
-        print(f"Consolidated code file generated: {consolidated_file}")
+    if is_valid_url(input_path):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            local_dir = os.path.join(temp_dir, "repo")
+            clone_repository(input_path, local_dir)
+            process_repository(local_dir)
+    elif os.path.isdir(input_path):
+        process_repository(input_path)
+    else:
+        print("Invalid input. Please provide a valid GitHub repository URL or a local directory path.")
+        sys.exit(1)
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2 or not is_valid_url(sys.argv[1]):
-        print("Usage: python main.py <valid GitHub repository URL>")
+    if len(sys.argv) != 2 or (not is_valid_url(sys.argv[1]) and not os.path.isdir(sys.argv[1])):
+        print("Usage: python main.py <valid GitHub repository URL or local directory path>")
         sys.exit(1)
-    repo_url = sys.argv[1]
-    main(repo_url)
-
+    input_path = sys.argv[1]
+    main(input_path)

@@ -18,12 +18,12 @@ pip install -r requirements.txt
 With everything set up, you can now use Repo2GPT:
 
 ```bash
-python main.py <GitHub repository URL>
+python main.py <GitHub repository URL or local directory path>
 ```
 
-Replace `<GitHub repository URL>` with the URL of the repository you want to clone and analyze. 
+Replace <GitHub repository URL or local directory path> with the URL of the repository you want to clone and analyze, or a local directory path you want to analyze.
 
-Repo2GPT will generate a tree diagram of the repository's structure and a consolidated text file containing all the code in the repository. The files will be named `tree_diagram.txt` and `consolidated_code.txt`, respectively.
+Repo2GPT will generate a tree diagram of the repository's structure and a consolidated text file containing all the code in the repository. The files will be named tree_diagram.txt and consolidated_code.txt, respectively.
 
 ## Future plans
 
