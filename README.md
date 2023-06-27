@@ -1,5 +1,7 @@
 # Repo2GPT
-Repo2GPT is a Python application that clones a GitHub repository and generates a tree diagram of the repository's file structure and a consolidated text file containing all the code files in the repository. This utility can help in quickly understanding the structure of a repository and reviewing its code. 
+Repo2GPT is a Python application that clones a GitHub repository and generates a tree diagram of the repository's file structure and a consolidated text file containing all the code files in the repository. This utility can help in quickly understanding the structure of a repository and reviewing its code. This simplifies the process of iterative development using LLMs such as GPT-4. Another usecase for it is analyzing a give repo for malicious code using ChatGPT. 
+
+Repo2GPT can also be used on a local folder containing code if no repo is available for the project you are trying to consolidate. 
 
 ...
 
@@ -27,15 +29,11 @@ Repo2GPT will generate a tree diagram of the repository's structure and a consol
 
 ## Future plans
 
-* Web version
-* Ability to use repo2GPT on local folders
+* Web version or VS Code Extension
 * Account for ignoring more types of irrelevant metadata files
-* Add splitting of consolidated code into custom lengths
+* Fix some of the encoding errors when consolidating certain readme.md files.
 * Better identification of code files and non-code files
 
 ## License
 
 Repo2GPT is licensed under the terms of the MIT license. See [LICENSE](LICENSE) for more details.
-
-
-
