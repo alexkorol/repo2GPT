@@ -29,10 +29,11 @@ Repo2GPT will generate a tree diagram of the repository's structure and a consol
 
 ## Future plans
 
-* Web version or VS Code Extension
-* Account for ignoring more types of irrelevant metadata files
+* Add ASM Traversal and mapping similar to ctags.
+* Web version or VS Code Extension.
+* Account for ignoring more types of irrelevant metadata files.
 * Fix some of the encoding errors when consolidating certain readme.md files.
-* Better identification of code files and non-code files
+* Better identification of code files and non-code files.
 
 ## License
 
