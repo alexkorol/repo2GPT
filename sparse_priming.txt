@@ -1,0 +1,144 @@
+
+
+---
+actions.py
+---
+Key functions: __init__, perform, __init__, perform, __init__, perform, perform, perform, __init__, dest_xy, blocking_entity, target_actor, perform, perform, perform, perform, __init__, perform
+Key classes: Action, PickupAction(Action), DropItem(Action), EscapeAction(Action), WaitAction(Action), ActionWithDirection(Action), MeleeAction(ActionWithDirection), MovementAction(ActionWithDirection), BumpAction(ActionWithDirection), InventoryAction(Action)
+Key variables: entity, engine, item, item, dx, dy, target, damage, attack_desc, dest_y, damage, item
+
+
+---
+engine.py
+---
+Key functions: __init__, set_player, handle_enemy_turns, update_fov, render
+Key classes: Engine
+Key variables: Console, MessageLog, MainGameEventHandler, player, message_log, message_console, player
+
+
+---
+entity.py
+---
+Key functions: __init__, spawn, place, move, __init__, is_alive, __init__, spawn, consume, __init__, activate, get_action, __init__, add_item, remove_item
+Key classes: Entity, Actor(Entity), Item(Entity), Consumable, HealingConsumable(Consumable), Inventory
+Key variables: T, int, int, str, str, bool, x, y, char, color, name, blocks_movement, gamemap, clone, x, y, gamemap, x, y, gamemap, int, int, str, str, fighter, entity, inventory, entity, render_order, int, int, str, str, consumable, entity, clone, x, y, gamemap, healing_amount, capacity, items
+
+
+---
+entity_factories.py
+---
+Key functions: 
+Key classes: 
+Key variables: health_potion, player, orc, troll
+
+
+---
+game_map.py
+---
+Key functions: __init__, actors, get_blocking_entity_at_location, get_actor_at_location, in_bounds, render
+Key classes: GameMap
+Key variables: engine, height, entities, tiles, visible, explored, x, y, x, y
+
+
+---
+input_handlers.py
+---
+Key functions: on_show_inventory, on_drop_inventory, on_show_inventory, on_drop_inventory, ev_keydown, ev_keydown
+Key classes: InventoryEventHandler(EventHandler), InventoryActivateHandler(InventoryEventHandler), InventoryDropHandler(InventoryEventHandler)
+Key variables: MOVE_KEYS, WAIT_KEYS, player, key, index, item, dy, action, action, key, action, key, player, dy, action, action, key, action
+
+
+---
+main.py
+---
+Key functions: main, render_gui, __init__, handle_events, render
+Key classes: HistoryViewer
+Key variables: screen_width, screen_height, map_width, map_height, room_max_size, room_min_size, max_rooms, max_monsters_per_room, tileset, engine, player, orc, troll, player, orc, troll, inventory, message_console_height, message_console, root_console, message_log, engine, engine, engine, engine, max_items_per_room, game_map, __name__, engine, index, key, vk, index, vk, index, vk, event_handler, color, i
+
+
+---
+main_game_event_handler.py
+---
+Key functions: handle_events, __init__, handle_events, ev_keydown
+Key classes: EventHandler, MainGameEventHandler(EventHandler)
+Key variables: engine, key, player, dy, action, action, key, action
+
+
+---
+message_log.py
+---
+Key functions: __init__, __str__, __init__, render, add_message, get_last_messages, get_last_messages, __iter__
+Key classes: Message, MessageLog
+Key variables: text, fg, messages, x, width, height, messages, width, new_msg_lines
+
+
+---
+procgen.py
+---
+Key functions: __init__, center, inner, intersects, place_entities, tunnel_between, generate_dungeon
+Key classes: RectangularRoom
+Key variables: x1, y1, x2, y2, center_x, center_y, number_of_monsters, number_of_items, x, y, x, y, x, y, x, y, y1, y2, corner_y, corner_y, player, dungeon, room_width, room_height, x, y, new_room
+
+
+---
+render_functions.py
+---
+Key functions: render_bar, render_messages
+Key classes: 
+Key variables: bar_width, messages_to_render
+
+
+---
+tile_types.py
+---
+Key functions: new_tile
+Key classes: 
+Key variables: graphic_dt, tile_dt, SHROUD, floor, wall
+
+
+---
+components\ai.py
+---
+Key functions: __init__, perform, get_path_to, __init__, engine, engine, perform
+Key classes: BaseAI(Action, BaseComponent), HostileEnemy(BaseAI)
+Key variables: engine, player, enemy, player, cost, graph, pathfinder, _engine, _engine, target, dx, dy, distance, path, dest_y
+
+
+---
+components\base_component.py
+---
+Key functions: engine
+Key classes: BaseComponent
+Key variables: 
+
+
+---
+components\consumable.py
+---
+Key functions: get_action, activate, consume, __init__, get_action, activate
+Key classes: Consumable(BaseComponent), HealingConsumable(Consumable)
+Key variables: entity, inventory, amount, consumer, amount_recovered
+
+
+---
+components\fighter.py
+---
+Key functions: __init__, hp, hp, die, take_damage
+Key classes: Fighter(BaseComponent)
+Key variables: max_hp, _hp, defense, power, _hp, entity, death_message, death_message, char, color, blocks_movement, ai, name, render_order
+
+
+---
+components\render_order.py
+---
+Key functions: 
+Key classes: RenderOrder(Enum)
+Key variables: ITEM, ACTOR, CORPSE
+
+
+---
+components\__init__.py
+---
+Key functions: 
+Key classes: 
+Key variables: 
