@@ -1,7 +1,9 @@
 consolidated_code.txt
 tree_diagram.txt
+repomap.txt
 /venv/
 __pycache__/
 /repo_clone/
 sparse_priming.txt
 repo_clone
+.aider*

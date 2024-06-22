@@ -1,9 +1,7 @@
 # Repo2GPT
-Repo2GPT is a Python application that clones a GitHub repository and generates a tree diagram of the repository's file structure and a consolidated text file containing all the code files in the repository. This utility can help in quickly understanding the structure of a repository and reviewing its code. This simplifies the process of iterative development using LLMs such as GPT-4. Another usecase for it is analyzing a give repo for malicious code using ChatGPT. 
+Repo2GPT is a Python application that clones a GitHub repository and generates a detailed repository map (repomap) of the repository's file structure, including classes, methods, and functions in each code file, and a consolidated text file containing all the code files in the repository. This utility can help in quickly understanding the structure of a repository and reviewing its code. This simplifies the process of iterative development using LLMs such as GPT-4. Another use case for it is analyzing a given repo for malicious code using ChatGPT.
 
-Repo2GPT can also be used on a local folder containing code if no repo is available for the project you are trying to consolidate. 
-
-...
+Repo2GPT can also be used on a local folder containing code if no repo is available for the project you are trying to consolidate.
 
 ### Install the Required Packages:
 
@@ -13,8 +11,6 @@ With the virtual environment activated (optional), install the packages listed i
 pip install -r requirements.txt
 ```
 
-...
-
 ## Usage
 
 With everything set up, you can now use Repo2GPT:
@@ -23,9 +19,9 @@ With everything set up, you can now use Repo2GPT:
 python main.py <GitHub repository URL or local directory path>
 ```
 
-Replace <GitHub repository URL or local directory path> with the URL of the repository you want to clone and analyze, or a local directory path you want to analyze.
+Replace `<GitHub repository URL or local directory path>` with the URL of the repository you want to clone and analyze, or a local directory path you want to analyze.
 
-Repo2GPT will generate a tree diagram of the repository's structure and a consolidated text file containing all the code in the repository. The files will be named tree_diagram.txt and consolidated_code.txt, respectively.
+Repo2GPT will generate a detailed repository map named `repomap.txt` and a consolidated text file containing all the code in the repository named `consolidated_code.txt`.
 
 ## Future plans
 

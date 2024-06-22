@@ -38,7 +38,7 @@ def load_gitignore_patterns(local_dir: str) -> list:
                     patterns.append(line)
     return patterns
 
-def process_file(file_path: str) -> str:
+def process_file(file_path: str, local_dir: str, gitignore_patterns: list) -> str:
     # Use filetype to determine file type
     kind = filetype.guess(file_path)
     if kind is None or not kind.mime.startswith('text'):
@@ -53,7 +53,6 @@ def process_file(file_path: str) -> str:
     relative_file_path = os.path.relpath(file_path, local_dir)
     if any(fnmatch.fnmatch(relative_file_path, pattern) for pattern in gitignore_patterns):
         return ''  # ignore this file
-        return ''
     try:
         with open(file_path, "r", encoding="utf-8", errors='ignore') as code_file:
             return f"\n\n---\n{relative_file_path}\n---\n\n" + code_file.read()
@@ -88,17 +87,14 @@ def generate_sparse_priming_representation(local_dir: str, output_file: str) -> 
                                 f.write("Key variables: " + ', '.join(f"{var} (Line {ln})" for var, ln in variables) + f" (Total: {len(variables)})\n")
 
 def process_repository(local_dir: str) -> None:
-    tree_diagram_file = "tree_diagram.txt"
+    repomap_file = "repomap.txt"
     consolidated_file = "consolidated_code.txt"
-    sparse_priming_file = "sparse_priming.txt"
 
-    generate_tree_diagram(local_dir, tree_diagram_file)
+    generate_repomap(local_dir, repomap_file)
     generate_consolidated_file(local_dir, consolidated_file)
-    generate_sparse_priming_representation(local_dir, sparse_priming_file)
 
-    print(f"Tree diagram generated: {tree_diagram_file}")
+    print(f"Repo map generated: {repomap_file}")
     print(f"Consolidated code file generated: {consolidated_file}")
-    print(f"Sparse priming file generated: {sparse_priming_file}")
 
 def generate_consolidated_file(local_dir: str, output_file: str) -> None:
     """Generates a consolidated text file containing all the code files in the repository."""
@@ -126,8 +122,8 @@ def generate_consolidated_file(local_dir: str, output_file: str) -> None:
                 except Exception as e:
                     f.write(f"An error occurred while reading the file {relative_file_path}. The error is as follows:\n{str(e)}\n")
 
-def generate_tree_diagram(local_dir: str, output_file: str) -> None:
-    """Generates a tree diagram of the repository's file structure."""
+def generate_repomap(local_dir: str, output_file: str) -> None:
+    """Generates a repo map of the repository's file structure with detailed information about classes, methods, and functions."""
     gitignore_patterns = load_gitignore_patterns(local_dir)
     with open(output_file, "w") as f:
         for root, dirs, files in os.walk(local_dir):
@@ -146,6 +142,17 @@ def generate_tree_diagram(local_dir: str, output_file: str) -> None:
                 if any(fnmatch.fnmatch(relative_file_path, pattern) for pattern in gitignore_patterns):
                     continue
                 f.write(f"{sub_indent}{file}\n")
+                if file.endswith(('.py', '.js', '.java', '.c', '.cpp')):
+                    with open(os.path.join(root, file), "r", encoding="utf-8", errors='ignore') as code_file:
+                        lines = code_file.readlines()
+                        functions = [(m.group(1), i + 1) for i, line in enumerate(lines) for m in [re.search(r"def (.+?)\(", line)] if m]
+                        classes = [(m.group(1), i + 1) for i, line in enumerate(lines) for m in [re.search(r"class (.+?):", line)] if m]
+                        if functions or classes:
+                            method_indent = " " * 4 * (level + 2)
+                            for cls, line in classes:
+                                f.write(f"{method_indent}Class {cls} (Line {line})\n")
+                            for fn, line in functions:
+                                f.write(f"{method_indent}Function {fn} (Line {line})\n")
 
 def main(input_path: str) -> None:
     """Entry point of the application."""
