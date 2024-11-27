@@ -7,3 +7,4 @@ __pycache__/
 sparse_priming.txt
 repo_clone
 .aider*
+.env

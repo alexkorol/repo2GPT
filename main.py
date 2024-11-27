@@ -46,7 +46,7 @@ def process_file(file_path: str, local_dir: str, gitignore_patterns: list) -> st
 
     # Exclude certain extensions
     ext = os.path.splitext(file_path)[-1].lower()
-    if ext in ['.log', '.csv', '.md', '.txt']:  # add or modify this list to fit your needs
+    if ext in ['.log', '.csv', '.md', '.txt', '.svg']:  # Added .svg to excluded extensions
         return ''
 
     # If the file is a code file, process it
@@ -99,7 +99,7 @@ def process_repository(local_dir: str) -> None:
 def generate_consolidated_file(local_dir: str, output_file: str) -> None:
     """Generates a consolidated text file containing all the code files in the repository."""
     gitignore_patterns = load_gitignore_patterns(local_dir)
-    ignore_patterns = [".png", ".jpg", ".csv", ".json", ".tmx"]  # Add or modify this list to fit your needs
+    ignore_patterns = [".png", ".jpg", ".csv", ".json", ".tmx", ".svg"]  # Added .svg to ignore patterns
     with open(output_file, "w") as f:
         for root, dirs, files in os.walk(local_dir):
             relative_root = os.path.relpath(root, local_dir)
