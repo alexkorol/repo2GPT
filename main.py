@@ -63,7 +63,7 @@ def process_file(file_path: str, local_dir: str, gitignore_patterns: list) -> st
 
 def generate_sparse_priming_representation(local_dir: str, output_file: str) -> None:
     gitignore_patterns = load_gitignore_patterns(local_dir)
-    with open(output_file, "w") as f:
+    with open(output_file, "w", encoding='utf-8') as f:
         for root, dirs, files in os.walk(local_dir):
             relative_root = os.path.relpath(root, local_dir)
             if any(fnmatch.fnmatch(relative_root, pattern) for pattern in gitignore_patterns):
@@ -100,59 +100,71 @@ def generate_consolidated_file(local_dir: str, output_file: str) -> None:
     """Generates a consolidated text file containing all the code files in the repository."""
     gitignore_patterns = load_gitignore_patterns(local_dir)
     ignore_patterns = [".png", ".jpg", ".csv", ".json", ".tmx", ".svg"]  # Added .svg to ignore patterns
-    with open(output_file, "w") as f:
-        for root, dirs, files in os.walk(local_dir):
-            relative_root = os.path.relpath(root, local_dir)
-            if any(fnmatch.fnmatch(relative_root, pattern) or fnmatch.fnmatch(relative_root.split(os.sep)[0], pattern) for pattern in gitignore_patterns):
-                dirs.clear()  # do not descend into this directory
-                continue
-            for file in files:
-                if file.endswith(tuple(ignore_patterns)):  # Ignore specified file types
+    try:
+        with open(output_file, "w", encoding='utf-8') as f:
+            for root, dirs, files in os.walk(local_dir):
+                relative_root = os.path.relpath(root, local_dir)
+                if any(fnmatch.fnmatch(relative_root, pattern) or fnmatch.fnmatch(relative_root.split(os.sep)[0], pattern) for pattern in gitignore_patterns):
+                    dirs.clear()  # do not descend into this directory
                     continue
-                file_path = os.path.join(root, file)
-                relative_file_path = os.path.relpath(file_path, local_dir)
-                if any(fnmatch.fnmatch(relative_file_path, pattern) for pattern in gitignore_patterns):
-                    continue  # ignore this file
-                f.write(f"\n\n---\n{relative_file_path}\n---\n\n")  # file name as separator
-                try:
-                    with open(file_path, "r", encoding="utf-8") as code_file:
-                        f.write(code_file.read())
-                except UnicodeDecodeError:
-                    f.write(f"Could not read the file {relative_file_path} because it is not a text file.\n")
-                except Exception as e:
-                    f.write(f"An error occurred while reading the file {relative_file_path}. The error is as follows:\n{str(e)}\n")
+                for file in files:
+                    if file.endswith(tuple(ignore_patterns)):  # Ignore specified file types
+                        continue
+                    file_path = os.path.join(root, file)
+                    relative_file_path = os.path.relpath(file_path, local_dir)
+                    if any(fnmatch.fnmatch(relative_file_path, pattern) for pattern in gitignore_patterns):
+                        continue  # ignore this file
+                    f.write(f"\n\n---\n{relative_file_path}\n---\n\n")  # file name as separator
+                    try:
+                        with open(file_path, "r", encoding="utf-8") as code_file:
+                            f.write(code_file.read())
+                    except UnicodeDecodeError:
+                        f.write(f"Could not read the file {relative_file_path} because it is not a text file.\n")
+                    except Exception as e:
+                        f.write(f"An error occurred while reading the file {relative_file_path}. The error is as follows:\n{str(e)}\n")
+    except Exception as e:
+        print(f"Error writing to consolidated file: {str(e)}")
+        sys.exit(1)
 
 def generate_repomap(local_dir: str, output_file: str) -> None:
     """Generates a repo map of the repository's file structure with detailed information about classes, methods, and functions."""
     gitignore_patterns = load_gitignore_patterns(local_dir)
-    with open(output_file, "w") as f:
-        for root, dirs, files in os.walk(local_dir):
-            relative_root = os.path.relpath(root, local_dir)
-            if any(fnmatch.fnmatch(relative_root, pattern) or fnmatch.fnmatch(relative_root.split(os.sep)[0], pattern) for pattern in gitignore_patterns):
-                dirs.clear()  # do not descend into this directory
-                continue
-            level = relative_root.count(os.sep)
-            indent = " " * 4 * level
-            f.write(f"{indent}{os.path.basename(root)}\n")
-            sub_indent = " " * 4 * (level + 1)
-            for file in files:
-                if file.endswith('.sample'):  # Ignore sample files
+    try:
+        with open(output_file, "w", encoding='utf-8') as f:
+            for root, dirs, files in os.walk(local_dir):
+                relative_root = os.path.relpath(root, local_dir)
+                if any(fnmatch.fnmatch(relative_root, pattern) or fnmatch.fnmatch(relative_root.split(os.sep)[0], pattern) for pattern in gitignore_patterns):
+                    dirs.clear()  # do not descend into this directory
                     continue
-                relative_file_path = os.path.join(relative_root, file)
-                if any(fnmatch.fnmatch(relative_file_path, pattern) for pattern in gitignore_patterns):
+                level = relative_root.count(os.sep)
+                indent = " " * 4 * level
+                try:
+                    f.write(f"{indent}{os.path.basename(root)}\n")
+                    sub_indent = " " * 4 * (level + 1)
+                    for file in files:
+                        if file.endswith('.sample'):  # Ignore sample files
+                            continue
+                        relative_file_path = os.path.join(relative_root, file)
+                        if any(fnmatch.fnmatch(relative_file_path, pattern) for pattern in gitignore_patterns):
+                            continue
+                        f.write(f"{sub_indent}{file}\n")
+                        if file.endswith(('.py', '.js', '.java', '.c', '.cpp')):
+                            with open(os.path.join(root, file), "r", encoding="utf-8", errors='ignore') as code_file:
+                                lines = code_file.readlines()
+                                functions = [(m.group(1), i + 1) for i, line in enumerate(lines) for m in [re.search(r"def (.+?)\(", line)] if m]
+                                classes = [(m.group(1), i + 1) for i, line in enumerate(lines) for m in [re.search(r"class (.+?):", line)] if m]
+                                if functions or classes:
+                                    method_indent = " " * 4 * (level + 2)
+                                    for cls, line in classes:
+                                        f.write(f"{method_indent}Class {cls} (Line {line})\n")
+                                    for fn, line in functions:
+                                        f.write(f"{method_indent}Function {fn} (Line {line})\n")
+                except UnicodeEncodeError:
+                    print(f"Warning: Skipping file/directory with unsupported characters")
                     continue
-                f.write(f"{sub_indent}{file}\n")
-                if file.endswith(('.py', '.js', '.java', '.c', '.cpp')):
-                    with open(os.path.join(root, file), "r", encoding="utf-8", errors='ignore') as code_file:
-                        lines = code_file.readlines()
-                        functions = [(m.group(1), i + 1) for i, line in enumerate(lines) for m in [re.search(r"def (.+?)\(", line)] if m]
-                        classes = [(m.group(1), i + 1) for i, line in enumerate(lines) for m in [re.search(r"class (.+?):", line)] if m]
-                        if functions or classes:
-                            method_indent = " " * 4 * (level + 2)
-                            for cls, line in classes:
-                                f.write(f"{method_indent}Class {cls} (Line {line})\n")
-                            for fn, line in functions:
-                                f.write(f"{method_indent}Function {fn} (Line {line})\n")
+    except Exception as e:
+        print(f"Error writing to repomap file: {str(e)}")
+        sys.exit(1)
 
 def main(input_path: str) -> None:
     """Entry point of the application."""
