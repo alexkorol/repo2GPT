@@ -26,6 +26,8 @@ def load_gitignore_patterns(local_dir: str) -> list:
     gitignore_file = os.path.join(local_dir, ".gitignore")
     patterns = [
         ".git",
+        ".venv",  # Added .venv directory
+        "venv",   # Also add venv for consistency
         "node_modules",
         "package-lock.json",
         "yarn.lock",
