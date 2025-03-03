@@ -133,6 +133,10 @@ def generate_repomap(local_dir: str, output_file: str) -> None:
     gitignore_patterns = load_gitignore_patterns(local_dir)
     try:
         with open(output_file, "w", encoding='utf-8') as f:
+            # Extract repo name from directory path
+            repo_name = os.path.basename(os.path.abspath(local_dir))
+            f.write(f"{repo_name}\n")
+            
             for root, dirs, files in os.walk(local_dir):
                 relative_root = os.path.relpath(root, local_dir)
                 if any(fnmatch.fnmatch(relative_root, pattern) or fnmatch.fnmatch(relative_root.split(os.sep)[0], pattern) for pattern in gitignore_patterns):
@@ -141,7 +145,8 @@ def generate_repomap(local_dir: str, output_file: str) -> None:
                 level = relative_root.count(os.sep)
                 indent = " " * 4 * level
                 try:
-                    f.write(f"{indent}{os.path.basename(root)}\n")
+                    if level > 0:  # Don't write the root directory name again
+                        f.write(f"{indent}{os.path.basename(root)}\n")
                     sub_indent = " " * 4 * (level + 1)
                     for file in files:
                         if file.endswith('.sample'):  # Ignore sample files
@@ -149,18 +154,159 @@ def generate_repomap(local_dir: str, output_file: str) -> None:
                         relative_file_path = os.path.join(relative_root, file)
                         if any(fnmatch.fnmatch(relative_file_path, pattern) for pattern in gitignore_patterns):
                             continue
+                        
                         f.write(f"{sub_indent}{file}\n")
-                        if file.endswith(('.py', '.js', '.java', '.c', '.cpp')):
-                            with open(os.path.join(root, file), "r", encoding="utf-8", errors='ignore') as code_file:
-                                lines = code_file.readlines()
-                                functions = [(m.group(1), i + 1) for i, line in enumerate(lines) for m in [re.search(r"def (.+?)\(", line)] if m]
-                                classes = [(m.group(1), i + 1) for i, line in enumerate(lines) for m in [re.search(r"class (.+?):", line)] if m]
-                                if functions or classes:
-                                    method_indent = " " * 4 * (level + 2)
-                                    for cls, line in classes:
-                                        f.write(f"{method_indent}Class {cls} (Line {line})\n")
-                                    for fn, line in functions:
-                                        f.write(f"{method_indent}Function {fn} (Line {line})\n")
+                        file_ext = os.path.splitext(file)[1].lower()
+                        
+                        # Process code files to extract structure
+                        if file_ext in ['.py', '.js', '.jsx', '.ts', '.tsx', '.java', '.c', '.cpp']:
+                            file_path = os.path.join(root, file)
+                            method_indent = " " * 4 * (level + 2)
+                            
+                            try:
+                                with open(file_path, "r", encoding="utf-8", errors='ignore') as code_file:
+                                    content = code_file.read()
+                                    lines = content.split('\n')
+                                    
+                                    # Python patterns
+                                    if file_ext == '.py':
+                                        functions = [(m.group(1), i + 1) for i, line in enumerate(lines) 
+                                                    for m in [re.search(r"def ([a-zA-Z0-9_]+)\s*\(", line)] if m]
+                                        classes = [(m.group(1), i + 1) for i, line in enumerate(lines) 
+                                                for m in [re.search(r"class ([a-zA-Z0-9_]+)\s*[\(:]", line)] if m]
+                                    
+                                    # JavaScript/TypeScript patterns
+                                    elif file_ext in ['.js', '.jsx', '.ts', '.tsx']:
+                                        # Function declarations
+                                        func_patterns = [
+                                            r"function\s+([a-zA-Z0-9_$]+)\s*\(",  # function name()
+                                            r"const\s+([a-zA-Z0-9_$]+)\s*=\s*function\s*\(",  # const name = function()
+                                            r"const\s+([a-zA-Z0-9_$]+)\s*=\s*\([^\)]*\)\s*=>",  # const name = () =>
+                                            r"let\s+([a-zA-Z0-9_$]+)\s*=\s*function\s*\(",  # let name = function()
+                                            r"let\s+([a-zA-Z0-9_$]+)\s*=\s*\([^\)]*\)\s*=>",  # let name = () =>
+                                            r"var\s+([a-zA-Z0-9_$]+)\s*=\s*function\s*\(",  # var name = function()
+                                            r"var\s+([a-zA-Z0-9_$]+)\s*=\s*\([^\)]*\)\s*=>",  # var name = () =>
+                                            r"([a-zA-Z0-9_$]+):\s*function\s*\(",  # name: function()
+                                            r"([a-zA-Z0-9_$]+)\s*\([^\)]*\)\s*{",  # name() {
+                                            r"async\s+function\s+([a-zA-Z0-9_$]+)\s*\(",  # async function name()
+                                            r"([a-zA-Z0-9_$]+)\s*=\s*async\s*\([^\)]*\)\s*=>",  # name = async () =>
+                                        ]
+                                        
+                                        functions = []
+                                        for i, line in enumerate(lines):
+                                            for pattern in func_patterns:
+                                                match = re.search(pattern, line)
+                                                if match:
+                                                    functions.append((match.group(1), i + 1))
+                                        
+                                        # Class declarations
+                                        class_patterns = [
+                                            r"class\s+([a-zA-Z0-9_$]+)",  # class Name
+                                            r"const\s+([a-zA-Z0-9_$]+)\s*=\s*class\s*{",  # const Name = class {
+                                        ]
+                                        
+                                        classes = []
+                                        for i, line in enumerate(lines):
+                                            for pattern in class_patterns:
+                                                match = re.search(pattern, line)
+                                                if match:
+                                                    classes.append((match.group(1), i + 1))
+                                        
+                                        # Look for class methods
+                                        class_methods = []
+                                        in_class = False
+                                        current_class = None
+                                        brace_count = 0
+                                        
+                                        for i, line in enumerate(lines):
+                                            # Check if entering a class
+                                            class_start = re.search(r"class\s+([a-zA-Z0-9_$]+)|const\s+([a-zA-Z0-9_$]+)\s*=\s*class", line)
+                                            if class_start:
+                                                in_class = True
+                                                current_class = class_start.group(1) or class_start.group(2)
+                                                if "{" in line:
+                                                    brace_count += line.count("{") - line.count("}")
+                                            
+                                            # Count braces to know when we exit the class
+                                            if in_class:
+                                                brace_count += line.count("{") - line.count("}")
+                                                if brace_count <= 0:
+                                                    in_class = False
+                                                    current_class = None
+                                                
+                                                # Look for methods in class
+                                                method_match = re.search(r"^\s*([a-zA-Z0-9_$]+)\s*\([^\)]*\)\s*{", line)
+                                                if method_match and in_class:
+                                                    method_name = method_match.group(1)
+                                                    if method_name not in ["constructor", "if", "for", "while", "switch"]:
+                                                        class_methods.append((f"{current_class}.{method_name}", i + 1))
+                                        
+                                        # Look for object declarations
+                                        object_declarations = []
+                                        for i, line in enumerate(lines):
+                                            obj_match = re.search(r"const\s+([a-zA-Z0-9_$]+)\s*=\s*{", line)
+                                            if obj_match:
+                                                object_declarations.append((obj_match.group(1), i + 1))
+                                        
+                                        # Look for exports
+                                        exports = []
+                                        for i, line in enumerate(lines):
+                                            export_match = re.search(r"export\s+(?:const|let|var|function|class|default)?\s*(\{[^}]+\}|[a-zA-Z0-9_$]+)", line)
+                                            if export_match:
+                                                exports.append((export_match.group(1), i + 1))
+                                        
+                                        # Look for imports to identify file relationships
+                                        imports = []
+                                        for i, line in enumerate(lines):
+                                            import_match = re.search(r"import\s+(?:{\s*([^}]+)\s*}|([a-zA-Z0-9_$]+))\s+from\s+['\"]([^'\"]+)['\"]", line)
+                                            if import_match:
+                                                imported = import_match.group(1) or import_match.group(2)
+                                                source = import_match.group(3)
+                                                imports.append((f"{imported} from {source}", i + 1))
+                                    
+                                    # Java/C/C++ patterns (simplified for now)
+                                    else:
+                                        functions = [(m.group(1), i + 1) for i, line in enumerate(lines) 
+                                                    for m in [re.search(r"(?:public|private|protected|static|\s) +[\w\<\>\[\]]+\s+([a-zA-Z0-9_]+)\s*\(", line)] if m]
+                                        classes = [(m.group(1), i + 1) for i, line in enumerate(lines) 
+                                                for m in [re.search(r"(?:public|private|protected|static|\s) +class +([a-zA-Z0-9_]+)", line)] if m]
+                                    
+                                    # Output the findings
+                                    if classes:
+                                        f.write(f"{method_indent}Classes:\n")
+                                        for cls, line in classes:
+                                            f.write(f"{method_indent}    {cls} (Line {line})\n")
+                                    
+                                    if functions:
+                                        f.write(f"{method_indent}Functions:\n")
+                                        for func, line in functions:
+                                            f.write(f"{method_indent}    {func} (Line {line})\n")
+                                    
+                                    # Output JavaScript specific structures
+                                    if file_ext in ['.js', '.jsx', '.ts', '.tsx']:
+                                        if class_methods:
+                                            f.write(f"{method_indent}Class Methods:\n")
+                                            for method, line in class_methods:
+                                                f.write(f"{method_indent}    {method} (Line {line})\n")
+                                        
+                                        if object_declarations:
+                                            f.write(f"{method_indent}Objects:\n")
+                                            for obj, line in object_declarations:
+                                                f.write(f"{method_indent}    {obj} (Line {line})\n")
+                                        
+                                        if exports:
+                                            f.write(f"{method_indent}Exports:\n")
+                                            for exp, line in exports:
+                                                f.write(f"{method_indent}    {exp} (Line {line})\n")
+                                        
+                                        if imports:
+                                            f.write(f"{method_indent}Imports:\n")
+                                            for imp, line in imports:
+                                                f.write(f"{method_indent}    {imp} (Line {line})\n")
+                            except UnicodeDecodeError:
+                                f.write(f"{method_indent}Error: Could not decode file content\n")
+                            except Exception as e:
+                                f.write(f"{method_indent}Error analyzing file: {str(e)}\n")
                 except UnicodeEncodeError:
                     print(f"Warning: Skipping file/directory with unsupported characters")
                     continue
