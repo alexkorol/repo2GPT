@@ -1,7 +1,10 @@
 # Repo2GPT
-Repo2GPT is a Python application that clones a GitHub repository and generates a detailed repository map (repomap) of the repository's file structure, including classes, methods, and functions in each code file, and a consolidated text file containing all the code files in the repository. This utility can help in quickly understanding the structure of a repository and reviewing its code. This simplifies the process of iterative development using LLMs such as GPT-4. Another use case for it is analyzing a given repo for malicious code using ChatGPT.
+Repo2GPT is a Python application that clones a GitHub repository (or points at an existing local checkout) and produces:
 
-Repo2GPT can also be used on a local folder containing code if no repo is available for the project you are trying to consolidate.
+- A **repomap** describing the directory structure plus key classes/functions per source file.
+- A **consolidated code bundle** that merges the relevant source files into a single prompt-friendly text file.
+
+The tool now defaults to a code-centric include list so that dependency locks, build artefacts, and other filler stay out of your prompt window. When you do need to override the defaults, Repo2GPT recognises `.gptignore` / `.gptinclude` files as well as inline CLI switches.
 
 ### Install the Required Packages:
 
@@ -16,20 +19,28 @@ pip install -r requirements.txt
 With everything set up, you can now use Repo2GPT:
 
 ```bash
-python main.py <GitHub repository URL or local directory path>
+python main.py <repo-url-or-path> \
+  --copy both \
+  --extra-include "*.yml" \
+  --extra-extensions md
 ```
 
-Replace `<GitHub repository URL or local directory path>` with the URL of the repository you want to clone and analyze, or a local directory path you want to analyze.
+Key options:
 
-Repo2GPT will generate a detailed repository map named `repomap.txt` and a consolidated text file containing all the code in the repository named `consolidated_code.txt`.
+- `--copy {map|code|both}` will push the generated outputs into the system clipboard, ready for pasting into your AI chat.
+- `.gptignore` / `.gptinclude` files (at the repo root or supplied via `--gptignore` / `--gptinclude`) mirror the patterns used by popular alternatives such as git2gpt.
+- `--extra-ignore`, `--extra-include`, and `--extra-extensions` let you fine-tune experiment-specific filters without editing dotfiles.
+- `--max-file-bytes` (default 500 KB) prevents enormous compiled or vendor files from exploding the output; pass `0` to disable.
+- `--include-all` reverts to the legacy “include everything” behaviour if you really need it.
+
+Repo2GPT writes `repomap.txt` and `consolidated_code.txt` to your current working directory unless you override the paths. If the targets live inside the repository directory, they are automatically excluded from the generated output.
 
 ## Future plans
 
-* Add ASM Traversal and mapping similar to ctags.
-* Web version or VS Code Extension.
-* Account for ignoring more types of irrelevant metadata files.
-* Fix some of the encoding errors when consolidating certain readme.md files.
-* Better identification of code files and non-code files.
+- Add ASM traversal and mapping similar to ctags.
+- Ship a web version or VS Code extension.
+- Add token estimates and chunked output helpers for extra-long repositories.
+- Better language-specific parsers for the repo map summaries.
 
 ## License
 
