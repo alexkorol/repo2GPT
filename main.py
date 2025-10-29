@@ -6,7 +6,7 @@ import sys
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
-from typing import Any, Iterable, List, Optional, Sequence, Set, Tuple
+from typing import Any, Callable, Iterable, List, Optional, Sequence, Set, Tuple
 
 from git import GitCommandError, Repo
 from urllib.parse import urlparse
