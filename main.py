@@ -4,7 +4,7 @@ import re
 import subprocess
 import sys
 import tempfile
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 from typing import Any, Iterable, List, Optional, Sequence, Set, Tuple
 
@@ -626,6 +626,221 @@ def generate_consolidated_file(
     return chunk_results
 
 
+@dataclass
+class FileStructureSummary:
+    classes: List[Tuple[str, int]] = field(default_factory=list)
+    functions: List[Tuple[str, int]] = field(default_factory=list)
+    class_methods: List[Tuple[str, int]] = field(default_factory=list)
+    object_declarations: List[Tuple[str, int]] = field(default_factory=list)
+    exports: List[Tuple[str, int]] = field(default_factory=list)
+    imports: List[Tuple[str, int]] = field(default_factory=list)
+
+
+Analyzer = Callable[[Sequence[str]], FileStructureSummary]
+
+
+def analyze_python(lines: Sequence[str]) -> FileStructureSummary:
+    summary = FileStructureSummary()
+    for index, line in enumerate(lines):
+        match = re.search(r"def ([a-zA-Z0-9_]+)\s*\(", line)
+        if match:
+            summary.functions.append((match.group(1), index + 1))
+
+        match = re.search(r"class ([a-zA-Z0-9_]+)\s*[\(:]", line)
+        if match:
+            summary.classes.append((match.group(1), index + 1))
+
+    return summary
+
+
+def analyze_javascript(lines: Sequence[str]) -> FileStructureSummary:
+    summary = FileStructureSummary()
+
+    func_patterns = [
+        r"function\s+([a-zA-Z0-9_$]+)\s*\(",
+        r"const\s+([a-zA-Z0-9_$]+)\s*=\s*function\s*\(",
+        r"const\s+([a-zA-Z0-9_$]+)\s*=\s*\([^\)]*\)\s*=>",
+        r"let\s+([a-zA-Z0-9_$]+)\s*=\s*function\s*\(",
+        r"let\s+([a-zA-Z0-9_$]+)\s*=\s*\([^\)]*\)\s*=>",
+        r"var\s+([a-zA-Z0-9_$]+)\s*=\s*function\s*\(",
+        r"var\s+([a-zA-Z0-9_$]+)\s*=\s*\([^\)]*\)\s*=>",
+        r"([a-zA-Z0-9_$]+):\s*function\s*\(",
+        r"([a-zA-Z0-9_$]+)\s*\([^\)]*\)\s*{",
+        r"async\s+function\s+([a-zA-Z0-9_$]+)\s*\(",
+        r"([a-zA-Z0-9_$]+)\s*=\s*async\s*\([^\)]*\)\s*=>",
+    ]
+
+    class_patterns = [
+        r"class\s+([a-zA-Z0-9_$]+)",
+        r"const\s+([a-zA-Z0-9_$]+)\s*=\s*class\s*{",
+    ]
+
+    for index, line in enumerate(lines):
+        for pattern in func_patterns:
+            match = re.search(pattern, line)
+            if match:
+                summary.functions.append((match.group(1), index + 1))
+
+        for pattern in class_patterns:
+            match = re.search(pattern, line)
+            if match:
+                summary.classes.append((match.group(1), index + 1))
+
+        obj_match = re.search(r"const\s+([a-zA-Z0-9_$]+)\s*=\s*{", line)
+        if obj_match:
+            summary.object_declarations.append((obj_match.group(1), index + 1))
+
+        export_match = re.search(
+            r"export\s+(?:const|let|var|function|class|default)?\s*(\{[^}]+\}|[a-zA-Z0-9_$]+)",
+            line,
+        )
+        if export_match:
+            summary.exports.append((export_match.group(1), index + 1))
+
+        import_match = re.search(
+            r"import\s+(?:{\s*([^}]+)\s*}|([a-zA-Z0-9_$]+))\s+from\s+['\"]([^'\"]+)['\"]",
+            line,
+        )
+        if import_match:
+            imported = import_match.group(1) or import_match.group(2)
+            source = import_match.group(3)
+            summary.imports.append((f"{imported} from {source}", index + 1))
+
+    in_class = False
+    current_class: Optional[str] = None
+    brace_count = 0
+    for index, line in enumerate(lines):
+        class_start = re.search(
+            r"class\s+([a-zA-Z0-9_$]+)|const\s+([a-zA-Z0-9_$]+)\s*=\s*class",
+            line,
+        )
+        if class_start:
+            in_class = True
+            current_class = class_start.group(1) or class_start.group(2)
+            brace_count += line.count("{") - line.count("}")
+        elif in_class:
+            brace_count += line.count("{") - line.count("}")
+            if brace_count <= 0:
+                in_class = False
+                current_class = None
+
+        if in_class:
+            method_match = re.search(r"^\s*([a-zA-Z0-9_$]+)\s*\([^\)]*\)\s*{", line)
+            if method_match and current_class:
+                method_name = method_match.group(1)
+                if method_name not in {"constructor", "if", "for", "while", "switch"}:
+                    summary.class_methods.append((f"{current_class}.{method_name}", index + 1))
+
+    return summary
+
+
+def analyze_go(lines: Sequence[str]) -> FileStructureSummary:
+    summary = FileStructureSummary()
+    func_pattern = re.compile(r"^\s*func\s+(?:\([^)]+\)\s*)?([A-Za-z0-9_]+)\s*\(")
+    type_pattern = re.compile(r"^\s*type\s+([A-Za-z0-9_]+)\s+(?:struct|interface)")
+
+    for index, line in enumerate(lines):
+        func_match = func_pattern.search(line)
+        if func_match:
+            summary.functions.append((func_match.group(1), index + 1))
+
+        type_match = type_pattern.search(line)
+        if type_match:
+            summary.classes.append((type_match.group(1), index + 1))
+
+    return summary
+
+
+def analyze_rust(lines: Sequence[str]) -> FileStructureSummary:
+    summary = FileStructureSummary()
+    fn_pattern = re.compile(r"^\s*(?:pub\s+)?(?:async\s+)?fn\s+([a-zA-Z0-9_]+)")
+    struct_pattern = re.compile(r"^\s*(?:pub\s+)?struct\s+([A-Za-z0-9_]+)")
+    enum_pattern = re.compile(r"^\s*(?:pub\s+)?enum\s+([A-Za-z0-9_]+)")
+
+    for index, line in enumerate(lines):
+        fn_match = fn_pattern.search(line)
+        if fn_match:
+            summary.functions.append((fn_match.group(1), index + 1))
+
+        struct_match = struct_pattern.search(line)
+        if struct_match:
+            summary.classes.append((struct_match.group(1), index + 1))
+
+        enum_match = enum_pattern.search(line)
+        if enum_match:
+            summary.classes.append((enum_match.group(1), index + 1))
+
+    return summary
+
+
+def analyze_ruby(lines: Sequence[str]) -> FileStructureSummary:
+    summary = FileStructureSummary()
+    def_pattern = re.compile(r"^\s*def\s+([A-Za-z0-9_?!]+(?:\.[A-Za-z0-9_?!]+)?)")
+    class_pattern = re.compile(r"^\s*class\s+([A-Za-z0-9_:]+)")
+
+    for index, line in enumerate(lines):
+        def_match = def_pattern.search(line)
+        if def_match:
+            summary.functions.append((def_match.group(1), index + 1))
+
+        class_match = class_pattern.search(line)
+        if class_match:
+            summary.classes.append((class_match.group(1), index + 1))
+
+    return summary
+
+
+def analyze_php(lines: Sequence[str]) -> FileStructureSummary:
+    summary = FileStructureSummary()
+    func_pattern = re.compile(r"\bfunction\s+&?\s*([A-Za-z0-9_]+)\s*\(", re.IGNORECASE)
+    class_pattern = re.compile(r"\b(class|interface|trait)\s+([A-Za-z0-9_]+)", re.IGNORECASE)
+
+    for index, line in enumerate(lines):
+        func_match = func_pattern.search(line)
+        if func_match:
+            summary.functions.append((func_match.group(1), index + 1))
+
+        class_match = class_pattern.search(line)
+        if class_match:
+            summary.classes.append((class_match.group(2), index + 1))
+
+    return summary
+
+
+def analyze_generic(lines: Sequence[str]) -> FileStructureSummary:
+    summary = FileStructureSummary()
+    func_pattern = re.compile(
+        r"(?:public|private|protected|static|\s)+[\w\<\>\[\]]+\s+([a-zA-Z0-9_]+)\s*\("
+    )
+    class_pattern = re.compile(
+        r"(?:public|private|protected|static|\s)+class +([a-zA-Z0-9_]+)"
+    )
+
+    for index, line in enumerate(lines):
+        func_match = func_pattern.search(line)
+        if func_match:
+            summary.functions.append((func_match.group(1), index + 1))
+
+        class_match = class_pattern.search(line)
+        if class_match:
+            summary.classes.append((class_match.group(1), index + 1))
+
+    return summary
+
+
+ANALYZER_DISPATCH: dict[str, Analyzer] = {
+    ".py": analyze_python,
+    ".js": analyze_javascript,
+    ".jsx": analyze_javascript,
+    ".ts": analyze_javascript,
+    ".tsx": analyze_javascript,
+    ".go": analyze_go,
+    ".rs": analyze_rust,
+    ".rb": analyze_ruby,
+    ".php": analyze_php,
+}
+
+
 def write_file_structure_summary(file_ext: str, file_path: str, handle, indent: str) -> None:
     try:
         with open(file_path, "r", encoding="utf-8", errors="ignore") as code_file:
@@ -634,152 +849,42 @@ def write_file_structure_summary(file_ext: str, file_path: str, handle, indent: 
         handle.write(f"{indent}Error analyzing file: {exc}\n")
         return
 
-    functions: List[Tuple[str, int]] = []
-    classes: List[Tuple[str, int]] = []
-    class_methods: List[Tuple[str, int]] = []
-    object_declarations: List[Tuple[str, int]] = []
-    exports: List[Tuple[str, int]] = []
-    imports: List[Tuple[str, int]] = []
-
     try:
-        if file_ext == ".py":
-            functions = [
-                (match.group(1), index + 1)
-                for index, line in enumerate(lines)
-                for match in [re.search(r"def ([a-zA-Z0-9_]+)\s*\(", line)]
-                if match
-            ]
-            classes = [
-                (match.group(1), index + 1)
-                for index, line in enumerate(lines)
-                for match in [re.search(r"class ([a-zA-Z0-9_]+)\s*[\(:]", line)]
-                if match
-            ]
-        elif file_ext in {".js", ".jsx", ".ts", ".tsx"}:
-            func_patterns = [
-                r"function\s+([a-zA-Z0-9_$]+)\s*\(",
-                r"const\s+([a-zA-Z0-9_$]+)\s*=\s*function\s*\(",
-                r"const\s+([a-zA-Z0-9_$]+)\s*=\s*\([^\)]*\)\s*=>",
-                r"let\s+([a-zA-Z0-9_$]+)\s*=\s*function\s*\(",
-                r"let\s+([a-zA-Z0-9_$]+)\s*=\s*\([^\)]*\)\s*=>",
-                r"var\s+([a-zA-Z0-9_$]+)\s*=\s*function\s*\(",
-                r"var\s+([a-zA-Z0-9_$]+)\s*=\s*\([^\)]*\)\s*=>",
-                r"([a-zA-Z0-9_$]+):\s*function\s*\(",
-                r"([a-zA-Z0-9_$]+)\s*\([^\)]*\)\s*{",
-                r"async\s+function\s+([a-zA-Z0-9_$]+)\s*\(",
-                r"([a-zA-Z0-9_$]+)\s*=\s*async\s*\([^\)]*\)\s*=>",
-            ]
-            for index, line in enumerate(lines):
-                for pattern in func_patterns:
-                    match = re.search(pattern, line)
-                    if match:
-                        functions.append((match.group(1), index + 1))
-
-            class_patterns = [
-                r"class\s+([a-zA-Z0-9_$]+)",
-                r"const\s+([a-zA-Z0-9_$]+)\s*=\s*class\s*{",
-            ]
-            for index, line in enumerate(lines):
-                for pattern in class_patterns:
-                    match = re.search(pattern, line)
-                    if match:
-                        classes.append((match.group(1), index + 1))
-
-            in_class = False
-            current_class = None
-            brace_count = 0
-            for index, line in enumerate(lines):
-                class_start = re.search(
-                    r"class\s+([a-zA-Z0-9_$]+)|const\s+([a-zA-Z0-9_$]+)\s*=\s*class",
-                    line,
-                )
-                if class_start:
-                    in_class = True
-                    current_class = class_start.group(1) or class_start.group(2)
-                    brace_count += line.count("{") - line.count("}")
-                elif in_class:
-                    brace_count += line.count("{") - line.count("}")
-                    if brace_count <= 0:
-                        in_class = False
-                        current_class = None
-
-                if in_class:
-                    method_match = re.search(r"^\s*([a-zA-Z0-9_$]+)\s*\([^\)]*\)\s*{", line)
-                    if method_match:
-                        method_name = method_match.group(1)
-                        if method_name not in {"constructor", "if", "for", "while", "switch"} and current_class:
-                            class_methods.append((f"{current_class}.{method_name}", index + 1))
-
-            for index, line in enumerate(lines):
-                obj_match = re.search(r"const\s+([a-zA-Z0-9_$]+)\s*=\s*{", line)
-                if obj_match:
-                    object_declarations.append((obj_match.group(1), index + 1))
-
-                export_match = re.search(
-                    r"export\s+(?:const|let|var|function|class|default)?\s*(\{[^}]+\}|[a-zA-Z0-9_$]+)",
-                    line,
-                )
-                if export_match:
-                    exports.append((export_match.group(1), index + 1))
-
-                import_match = re.search(
-                    r"import\s+(?:{\s*([^}]+)\s*}|([a-zA-Z0-9_$]+))\s+from\s+['\"]([^'\"]+)['\"]",
-                    line,
-                )
-                if import_match:
-                    imported = import_match.group(1) or import_match.group(2)
-                    source = import_match.group(3)
-                    imports.append((f"{imported} from {source}", index + 1))
-        else:
-            functions = [
-                (match.group(1), index + 1)
-                for index, line in enumerate(lines)
-                for match in [
-                    re.search(r"(?:public|private|protected|static|\s)+[\w\<\>\[\]]+\s+([a-zA-Z0-9_]+)\s*\(", line)
-                ]
-                if match
-            ]
-            classes = [
-                (match.group(1), index + 1)
-                for index, line in enumerate(lines)
-                for match in [
-                    re.search(r"(?:public|private|protected|static|\s)+class +([a-zA-Z0-9_]+)", line)
-                ]
-                if match
-            ]
+        analyzer = ANALYZER_DISPATCH.get(file_ext, analyze_generic)
+        summary = analyzer(lines)
     except Exception as exc:  # pragma: no cover - regex failures
         handle.write(f"{indent}Error analyzing file: {exc}\n")
         return
 
-    if classes:
+    if summary.classes:
         handle.write(f"{indent}Classes:\n")
-        for cls, line_no in classes:
+        for cls, line_no in summary.classes:
             handle.write(f"{indent}    {cls} (Line {line_no})\n")
 
-    if functions:
+    if summary.functions:
         handle.write(f"{indent}Functions:\n")
-        for func, line_no in functions:
+        for func, line_no in summary.functions:
             handle.write(f"{indent}    {func} (Line {line_no})\n")
 
     if file_ext in {".js", ".jsx", ".ts", ".tsx"}:
-        if class_methods:
+        if summary.class_methods:
             handle.write(f"{indent}Class Methods:\n")
-            for method, line_no in class_methods:
+            for method, line_no in summary.class_methods:
                 handle.write(f"{indent}    {method} (Line {line_no})\n")
 
-        if object_declarations:
+        if summary.object_declarations:
             handle.write(f"{indent}Objects:\n")
-            for obj, line_no in object_declarations:
+            for obj, line_no in summary.object_declarations:
                 handle.write(f"{indent}    {obj} (Line {line_no})\n")
 
-        if exports:
+        if summary.exports:
             handle.write(f"{indent}Exports:\n")
-            for export, line_no in exports:
+            for export, line_no in summary.exports:
                 handle.write(f"{indent}    {export} (Line {line_no})\n")
 
-        if imports:
+        if summary.imports:
             handle.write(f"{indent}Imports:\n")
-            for imp, line_no in imports:
+            for imp, line_no in summary.imports:
                 handle.write(f"{indent}    {imp} (Line {line_no})\n")
 
 
