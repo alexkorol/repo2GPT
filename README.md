@@ -18,6 +18,17 @@ With the virtual environment activated (optional), install the packages listed i
 pip install -r requirements.txt
 ```
 
+## Running tests
+
+Repo2GPT includes a pytest suite that covers critical helpers and a full repository processing path. After installing the
+dependencies, run:
+
+```bash
+pytest
+```
+
+Use the same command in continuous integration jobs once dependency installation has completed.
+
 ## Usage
 
 With everything set up, you can now use Repo2GPT:
