@@ -28,7 +28,7 @@ python main.py <repo-url-or-path> \
 Key options:
 
 - `--copy {map|code|both}` will push the generated outputs into the system clipboard, ready for pasting into your AI chat.
-- `.gptignore` / `.gptinclude` files (at the repo root or supplied via `--gptignore` / `--gptinclude`) mirror the patterns used by popular alternatives such as git2gpt.
+- `.gptignore` / `.gptinclude` files (at the repo root or supplied via `--gptignore` / `--gptinclude`) mirror the patterns used by popular alternatives such as git2gpt. Include patterns **add** to the default code-centric filter: code files remain eligible even when a `.gptinclude` exists, while non-code files require a matching include rule.
 - `--extra-ignore`, `--extra-include`, and `--extra-extensions` let you fine-tune experiment-specific filters without editing dotfiles.
 - `--max-file-bytes` (default 500 KB) prevents enormous compiled or vendor files from exploding the output; pass `0` to disable.
 - `--include-all` reverts to the legacy “include everything” behaviour if you really need it.

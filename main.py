@@ -264,6 +264,12 @@ def matches_patterns(path: str, patterns: Iterable[str]) -> bool:
     return any(posix_path.match(pattern) for pattern in patterns)
 
 
+def matches_include(path: str, include_patterns: Iterable[str]) -> bool:
+    """Return ``True`` if ``path`` is explicitly requested by include patterns."""
+
+    return matches_patterns(path, include_patterns)
+
+
 def load_pattern_file(path: Path) -> List[str]:
     patterns: List[str] = []
     if not path.exists():
@@ -339,8 +345,8 @@ def should_include_file(relative_path: str, file_name: str, options: ProcessingO
     posix = normalize_relative_path(relative_path)
     if matches_patterns(posix, options.ignore_patterns):
         return False
-    if options.include_patterns:
-        return matches_patterns(posix, options.include_patterns)
+    if matches_include(posix, options.include_patterns):
+        return True
     if options.allow_non_code:
         return True
     return is_code_file(file_name, options)
