@@ -32,14 +32,33 @@ Key options:
 - `--extra-ignore`, `--extra-include`, and `--extra-extensions` let you fine-tune experiment-specific filters without editing dotfiles.
 - `--max-file-bytes` (default 500 KB) prevents enormous compiled or vendor files from exploding the output; pass `0` to disable.
 - `--include-all` reverts to the legacy “include everything” behaviour if you really need it.
+- `--enable-token-counts` prints an estimated token budget for each consolidated chunk; install the optional `tiktoken` package for model-aware counts.
+- `--chunk-size` splits the consolidated output into numbered files once a chunk nears the requested token ceiling (set to `0` to disable).
 
 Repo2GPT writes `repomap.txt` and `consolidated_code.txt` to your current working directory unless you override the paths. If the targets live inside the repository directory, they are automatically excluded from the generated output.
+
+### Token planning & chunked output
+
+Install the optional tokenizer dependency to obtain model-compatible counts:
+
+```bash
+pip install tiktoken
+```
+
+Then invoke Repo2GPT with the token helpers enabled:
+
+```bash
+python main.py <repo-url-or-path> \
+  --enable-token-counts \
+  --chunk-size 3500
+```
+
+The CLI now reports token usage per chunk, the total estimated budget, and whether the counts are approximate (when `tiktoken` is unavailable). When chunking is enabled, the primary consolidated file retains its original name and subsequent chunks are written as `<name>_partXX.ext`. Clipboard copies combine the numbered chunks with lightweight headings so you can paste the full series into your prompt workflow.
 
 ## Future plans
 
 - Add ASM traversal and mapping similar to ctags.
 - Ship a web version or VS Code extension.
-- Add token estimates and chunked output helpers for extra-long repositories.
 - Better language-specific parsers for the repo map summaries.
 
 ## License

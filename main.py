@@ -6,7 +6,7 @@ import sys
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
-from typing import Iterable, List, Optional, Sequence, Set, Tuple
+from typing import Any, Iterable, List, Optional, Sequence, Set, Tuple
 
 from git import GitCommandError, Repo
 from urllib.parse import urlparse
@@ -15,6 +15,11 @@ try:
     import pyperclip  # type: ignore
 except ImportError:  # pragma: no cover - optional dependency
     pyperclip = None
+
+try:
+    import tiktoken  # type: ignore
+except ImportError:  # pragma: no cover - optional dependency
+    tiktoken = None
 
 DEFAULT_CODE_EXTENSIONS: Set[str] = {
     ".py",
@@ -296,6 +301,76 @@ class ProcessingOptions:
     allow_non_code: bool
 
 
+@dataclass
+class ConsolidatedChunkResult:
+    path: str
+    token_count: int
+    file_count: int
+
+
+class TokenEstimator:
+    """Estimate token counts using ``tiktoken`` when available."""
+
+    def __init__(self, enabled: bool, encoding_name: str = "cl100k_base") -> None:
+        self.enabled = enabled
+        self._encoding_name = encoding_name
+        self._encoder: Optional[Any] = None
+        self.uses_tiktoken = False
+        self._strategy_description = "disabled"
+
+        if not enabled:
+            return
+
+        if tiktoken is not None:
+            self._encoder = self._load_encoder(encoding_name)
+            if self._encoder is None:
+                for candidate in ("gpt-4", "gpt-3.5-turbo"):
+                    self._encoder = self._load_encoder(candidate, for_model=True)
+                    if self._encoder is not None:
+                        self._encoding_name = candidate
+                        break
+
+        if self._encoder is not None:
+            self.uses_tiktoken = True
+            self._strategy_description = f"tiktoken ({self._encoding_name})"
+        else:
+            self._strategy_description = "approximate (characters / 4)"
+
+    @staticmethod
+    def _load_encoder(name: str, for_model: bool = False) -> Optional[Any]:
+        if tiktoken is None:
+            return None
+        try:
+            if for_model:
+                return tiktoken.encoding_for_model(name)
+            return tiktoken.get_encoding(name)
+        except Exception:  # pragma: no cover - depends on optional dependency
+            return None
+
+    def count(self, text: str) -> int:
+        if not self.enabled or not text:
+            return 0
+        if self._encoder is not None:
+            try:
+                return len(self._encoder.encode(text))
+            except Exception:  # pragma: no cover - defensive fallback
+                pass
+        # Coarse heuristic: assume ~4 characters per token.
+        length = len(text)
+        return (length + 3) // 4 if length else 0
+
+    @property
+    def description(self) -> str:
+        return self._strategy_description
+
+
+@dataclass
+class RepoProcessingResult:
+    repomap_path: str
+    consolidated_chunks: List[ConsolidatedChunkResult]
+    token_estimator: TokenEstimator
+
+
 def normalize_relative_path(path: str) -> str:
     if not path or path == ".":
         return ""
@@ -437,57 +512,118 @@ def generate_consolidated_file(
     output_file: str,
     options: ProcessingOptions,
     skip_relatives: Set[str],
-) -> None:
-    """Generates a consolidated text file containing the relevant code files in the repository."""
+    token_estimator: Optional[TokenEstimator] = None,
+    chunk_token_limit: Optional[int] = None,
+) -> List[ConsolidatedChunkResult]:
+    """Generate consolidated code output, optionally splitting into token-bounded chunks."""
 
-    Path(output_file).parent.mkdir(parents=True, exist_ok=True)
+    estimator = token_estimator or TokenEstimator(False)
+    token_limit = chunk_token_limit if chunk_token_limit and chunk_token_limit > 0 else None
+    base_path = Path(output_file)
+    base_path.parent.mkdir(parents=True, exist_ok=True)
+
+    def resolve_chunk_path(index: int) -> Path:
+        if token_limit and index > 1:
+            suffix = base_path.suffix
+            stem = base_path.stem
+            return base_path.with_name(f"{stem}_part{index:02d}{suffix}")
+        return base_path
+
+    chunk_results: List[ConsolidatedChunkResult] = []
+    chunk_index = 1
+    current_path = resolve_chunk_path(chunk_index)
+    current_handle: Optional[Any] = None
+    chunk_tokens = 0
+    chunk_file_count = 0
+
+    def open_chunk(path: Path) -> Any:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        return path.open("w", encoding="utf-8")
+
+    def finalize_chunk(handle: Optional[Any], path: Path, tokens: int, file_count: int) -> None:
+        if handle is not None:
+            handle.close()
+        chunk_results.append(
+            ConsolidatedChunkResult(path=str(path), token_count=tokens, file_count=file_count)
+        )
 
     try:
-        with open(output_file, "w", encoding="utf-8") as handle:
-            for root, dirs, files in os.walk(local_dir):
-                relative_root = os.path.relpath(root, local_dir)
-                if should_skip_directory(relative_root, options):
-                    dirs.clear()
+        current_handle = open_chunk(current_path)
+
+        for root, dirs, files in os.walk(local_dir):
+            relative_root = os.path.relpath(root, local_dir)
+            if should_skip_directory(relative_root, options):
+                dirs.clear()
+                continue
+
+            dirs[:] = [
+                d
+                for d in dirs
+                if not should_skip_directory(join_relative_path(relative_root, d), options)
+            ]
+
+            for file_name in files:
+                relative_file = join_relative_path(relative_root, file_name)
+                normalized_relative = normalize_relative_path(relative_file)
+
+                if normalized_relative in skip_relatives:
                     continue
 
-                dirs[:] = [
-                    d
-                    for d in dirs
-                    if not should_skip_directory(join_relative_path(relative_root, d), options)
-                ]
+                if not should_include_file(relative_file, file_name, options):
+                    continue
 
-                for file_name in files:
-                    relative_file = join_relative_path(relative_root, file_name)
-                    normalized_relative = normalize_relative_path(relative_file)
+                file_path = os.path.join(root, file_name)
 
-                    if normalized_relative in skip_relatives:
+                try:
+                    if options.max_file_bytes and os.path.getsize(file_path) > options.max_file_bytes:
                         continue
+                except OSError:
+                    continue
 
-                    if not should_include_file(relative_file, file_name, options):
-                        continue
+                if is_binary_file(file_path):
+                    continue
 
-                    file_path = os.path.join(root, file_name)
+                header = f"\n\n---\n{normalized_relative or file_name}\n---\n\n"
+                try:
+                    with open(file_path, "r", encoding="utf-8", errors="ignore") as source:
+                        body = source.read()
+                except Exception as exc:  # pragma: no cover - logging only
+                    body = (
+                        f"Could not read the file {normalized_relative or file_name}. The error is as follows:\n{exc}\n"
+                    )
 
-                    try:
-                        if options.max_file_bytes and os.path.getsize(file_path) > options.max_file_bytes:
-                            continue
-                    except OSError:
-                        continue
+                file_block = f"{header}{body}"
+                block_tokens = estimator.count(file_block)
 
-                    if is_binary_file(file_path):
-                        continue
+                if (
+                    token_limit
+                    and chunk_tokens > 0
+                    and chunk_tokens + block_tokens > token_limit
+                ):
+                    finalize_chunk(current_handle, current_path, chunk_tokens, chunk_file_count)
+                    chunk_index += 1
+                    current_path = resolve_chunk_path(chunk_index)
+                    current_handle = open_chunk(current_path)
+                    chunk_tokens = 0
+                    chunk_file_count = 0
 
-                    handle.write(f"\n\n---\n{normalized_relative or file_name}\n---\n\n")
-                    try:
-                        with open(file_path, "r", encoding="utf-8", errors="ignore") as source:
-                            handle.write(source.read())
-                    except Exception as exc:  # pragma: no cover - logging only
-                        handle.write(
-                            f"Could not read the file {normalized_relative or file_name}. The error is as follows:\n{exc}\n"
-                        )
+                if current_handle is None:
+                    current_handle = open_chunk(current_path)
+
+                current_handle.write(file_block)
+                chunk_tokens += block_tokens
+                chunk_file_count += 1
+
+        finalize_chunk(current_handle, current_path, chunk_tokens, chunk_file_count)
+        current_handle = None
     except Exception as exc:  # pragma: no cover - unexpected filesystem errors
         print(f"Error writing to consolidated file: {exc}")
         sys.exit(1)
+    finally:
+        if current_handle is not None:
+            current_handle.close()
+
+    return chunk_results
 
 
 def write_file_structure_summary(file_ext: str, file_path: str, handle, indent: str) -> None:
@@ -745,7 +881,11 @@ def copy_to_clipboard(text: str) -> bool:
         return False
 
 
-def handle_clipboard(copy_option: Optional[str], repomap_path: str, consolidated_path: str) -> None:
+def handle_clipboard(
+    copy_option: Optional[str],
+    repomap_path: str,
+    consolidated_paths: Sequence[str],
+) -> None:
     if not copy_option:
         return
 
@@ -754,10 +894,18 @@ def handle_clipboard(copy_option: Optional[str], repomap_path: str, consolidated
     if copy_option in {"map", "both"} and os.path.exists(repomap_path):
         selections.append(("repo map", Path(repomap_path).read_text(encoding="utf-8", errors="ignore")))
 
-    if copy_option in {"code", "both"} and os.path.exists(consolidated_path):
-        selections.append(
-            ("consolidated code", Path(consolidated_path).read_text(encoding="utf-8", errors="ignore"))
-        )
+    if copy_option in {"code", "both"}:
+        consolidated_blobs: List[str] = []
+        for index, path in enumerate(consolidated_paths, start=1):
+            if not os.path.exists(path):
+                continue
+            content = Path(path).read_text(encoding="utf-8", errors="ignore")
+            if len(consolidated_paths) > 1:
+                content = f"# Chunk {index:02d} - {Path(path).name}\n\n{content}"
+            consolidated_blobs.append(content)
+
+        if consolidated_blobs:
+            selections.append(("consolidated code", "\n\n".join(consolidated_blobs)))
 
     if not selections:
         print("Nothing to copy to the clipboard.")
@@ -775,7 +923,7 @@ def handle_clipboard(copy_option: Optional[str], repomap_path: str, consolidated
         print("Unable to copy output to the clipboard automatically.")
 
 
-def process_repository(local_dir: str, args: argparse.Namespace) -> Tuple[str, str]:
+def process_repository(local_dir: str, args: argparse.Namespace) -> RepoProcessingResult:
     options = build_processing_options(local_dir, args)
 
     repomap_path = os.path.abspath(args.repomap)
@@ -784,12 +932,50 @@ def process_repository(local_dir: str, args: argparse.Namespace) -> Tuple[str, s
     skip_relatives = resolve_skip_paths(local_dir, (repomap_path, consolidated_path))
 
     generate_repomap(local_dir, repomap_path, options, skip_relatives)
-    generate_consolidated_file(local_dir, consolidated_path, options, skip_relatives)
+    token_estimator = TokenEstimator(
+        enabled=bool(args.enable_token_counts or (args.chunk_size and args.chunk_size > 0))
+    )
+    chunk_limit = args.chunk_size if args.chunk_size and args.chunk_size > 0 else None
+    consolidated_chunks = generate_consolidated_file(
+        local_dir,
+        consolidated_path,
+        options,
+        skip_relatives,
+        token_estimator=token_estimator,
+        chunk_token_limit=chunk_limit,
+    )
 
     print(f"Repo map generated: {repomap_path}")
-    print(f"Consolidated code file generated: {consolidated_path}")
+    if len(consolidated_chunks) == 1:
+        print(f"Consolidated code file generated: {consolidated_chunks[0].path}")
+    else:
+        print("Consolidated code chunks generated:")
+        for index, chunk in enumerate(consolidated_chunks, start=1):
+            token_fragment = (
+                f" (~{chunk.token_count} tokens)" if token_estimator.enabled else ""
+            )
+            print(f"  Part {index:02d}: {chunk.path}{token_fragment}")
 
-    return repomap_path, consolidated_path
+    if token_estimator.enabled:
+        if not token_estimator.uses_tiktoken:
+            print(
+                "Token counts are approximate; install 'tiktoken' for tokenizer-accurate measurements."
+            )
+        total_tokens = sum(chunk.token_count for chunk in consolidated_chunks)
+        print("Token statistics:")
+        for index, chunk in enumerate(consolidated_chunks, start=1):
+            print(
+                f"  Chunk {index:02d}: ~{chunk.token_count} tokens across {chunk.file_count} files ({chunk.path})"
+            )
+        print(f"  Total estimated tokens: ~{total_tokens} ({token_estimator.description}).")
+        if chunk_limit:
+            print(f"  Token ceiling per chunk: {chunk_limit}")
+
+    return RepoProcessingResult(
+        repomap_path=repomap_path,
+        consolidated_chunks=consolidated_chunks,
+        token_estimator=token_estimator,
+    )
 
 
 def parse_arguments(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
@@ -846,6 +1032,17 @@ def parse_arguments(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         action="store_true",
         help="Include non-code files by default (combine with include/ignore patterns as needed).",
     )
+    parser.add_argument(
+        "--enable-token-counts",
+        action="store_true",
+        help="Estimate token usage for the consolidated output (requires optional 'tiktoken' for best accuracy).",
+    )
+    parser.add_argument(
+        "--chunk-size",
+        type=int,
+        default=0,
+        help="Split consolidated output into chunks capped at approximately this many tokens (default: %(default)s, 0 disables).",
+    )
     return parser.parse_args(argv if argv is not None else sys.argv[1:])
 
 
@@ -853,18 +1050,23 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
     args = parse_arguments(argv)
     input_path = args.input
 
+    result: RepoProcessingResult
     if is_valid_url(input_path):
         with tempfile.TemporaryDirectory() as temp_dir:
             local_dir = os.path.join(temp_dir, "repo")
             clone_repository(input_path, local_dir)
-            repomap_path, consolidated_path = process_repository(local_dir, args)
+            result = process_repository(local_dir, args)
     elif os.path.isdir(input_path):
-        repomap_path, consolidated_path = process_repository(input_path, args)
+        result = process_repository(input_path, args)
     else:
         print("Invalid input. Please provide a valid GitHub repository URL or a local directory path.")
         sys.exit(1)
 
-    handle_clipboard(args.copy, repomap_path, consolidated_path)
+    handle_clipboard(
+        args.copy,
+        result.repomap_path,
+        [chunk.path for chunk in result.consolidated_chunks],
+    )
 
 
 if __name__ == "__main__":
