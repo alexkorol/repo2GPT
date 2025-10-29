@@ -4,6 +4,10 @@ Repo2GPT is a Python application that clones a GitHub repository (or points at a
 - A **repomap** describing the directory structure plus key classes/functions per source file.
 - A **consolidated code bundle** that merges the relevant source files into a single prompt-friendly text file.
 
+### Language-aware summaries
+
+Repo2GPT extracts richer function and type information for Python, JavaScript/TypeScript, Go, Rust, Ruby, and PHP source files, helping the repo map highlight the most relevant entry points in those ecosystems.
+
 The tool now defaults to a code-centric include list so that dependency locks, build artefacts, and other filler stay out of your prompt window. When you do need to override the defaults, Repo2GPT recognises `.gptignore` / `.gptinclude` files as well as inline CLI switches.
 
 ### Install the Required Packages:
@@ -40,7 +44,7 @@ Repo2GPT writes `repomap.txt` and `consolidated_code.txt` to your current workin
 - Add ASM traversal and mapping similar to ctags.
 - Ship a web version or VS Code extension.
 - Add token estimates and chunked output helpers for extra-long repositories.
-- Better language-specific parsers for the repo map summaries.
+- Continue expanding language-specific parsers for the repo map summaries.
 
 ## License
 
