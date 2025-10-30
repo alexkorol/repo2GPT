@@ -70,6 +70,75 @@ python main.py <repo-url-or-path> \
 
 The CLI now reports token usage per chunk, the total estimated budget, and whether the counts are approximate (when `tiktoken` is unavailable). When chunking is enabled, the primary consolidated file retains its original name and subsequent chunks are written as `<name>_partXX.ext`. Clipboard copies combine the numbered chunks with lightweight headings so you can paste the full series into your prompt workflow.
 
+## API service
+
+Repo2GPT now ships with a FastAPI-powered service that accepts repository processing jobs and streams progress back to clients. The API layers asynchronous job execution, on-disk persistence, and live Server-Sent Event (SSE) feeds on top of the existing snapshot engine.
+
+### Running the server locally
+
+Install the dependencies and start the application with Uvicorn:
+
+```bash
+pip install -r requirements.txt
+uvicorn api.server:app --host 0.0.0.0 --port 8000
+```
+
+Set `REPO2GPT_STORAGE_ROOT` if you want processed artifacts and status files to live somewhere other than the default `~/.repo2gpt/jobs` directory. Jobs are persisted on disk so they survive restarts.
+
+### Submitting jobs
+
+Create a job with `POST /jobs`. The payload must include a `source` describing where the repository comes from (`git`, `archive_url`, or `archive_upload`) and optional processing tweaks:
+
+```json
+{
+  "source": {
+    "type": "git",
+    "url": "https://github.com/openai/repo2gpt.git",
+    "ref": "main"
+  },
+  "chunk_token_limit": 3500,
+  "enable_token_counts": true,
+  "options": {
+    "ignore_patterns": ["*.ipynb"],
+    "allow_non_code": false
+  }
+}
+```
+
+The endpoint responds immediately with a job identifier while processing continues in the background. The work runs in an asynchronous task so request threads remain free.
+
+### Tracking status and artifacts
+
+- `GET /jobs/{id}` returns the job metadata, progress log, and any token statistics.
+- `GET /jobs/{id}/artifacts` fetches the generated repo map and consolidated chunks once the job has completed.
+- `GET /jobs/{id}/events` streams incremental updates as SSE messages. Clients receive progress notifications, chunk statistics, and final status changes in near real time.
+- `GET /healthz` exposes a simple readiness probe for load balancers and orchestration systems.
+
+SSE streams emit `status`, `progress`, `chunk`, `repomap`, and `tokens` events, each carrying structured JSON data. The server keeps connections alive with heartbeat comments so browsers do not time out on long-running repositories.
+
+### Authentication
+
+Set the `REPO2GPT_API_KEY` environment variable to enforce API-key based authentication. When configured, every request must include an `X-API-Key` header that matches the configured secret. Leave the variable unset for unauthenticated local development.
+
+### Deployment
+
+The repository provides a production-ready Dockerfile. Build and run the container with:
+
+```bash
+docker build -t repo2gpt-api .
+docker run --rm -p 8000:8000 -e REPO2GPT_API_KEY=super-secret \
+  -e REPO2GPT_STORAGE_ROOT=/data/jobs -v $(pwd)/jobs:/data/jobs repo2gpt-api
+```
+
+For bare-metal or virtual machine deployments you can rely on Gunicorn’s Uvicorn worker class:
+
+```bash
+gunicorn api.server:app -k uvicorn.workers.UvicornWorker \
+  --bind 0.0.0.0:8000 --workers 2 --timeout 300
+```
+
+Make sure the `REPO2GPT_STORAGE_ROOT` directory is writable by the service account and, when authentication is enabled, store the API key securely (for example via environment-injected secrets).
+
 ## Future plans
 
 - Add ASM traversal and mapping similar to ctags.
