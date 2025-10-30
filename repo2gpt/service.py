@@ -170,9 +170,35 @@ def _normalize_pattern(line: str) -> List[str]:
     line = line.strip()
     if not line or line.startswith("#"):
         return []
-    if line.endswith("/"):
-        return [line.rstrip("/") + "/**", line.rstrip("/") + "/"]
-    return [line]
+
+    # ``pathlib.PurePosixPath.match`` works with relative paths, so we strip any
+    # leading ``/`` to keep root-anchored ignores functional.
+    normalized = line.lstrip("/")
+    if not normalized:
+        return []
+
+    patterns: List[str] = []
+
+    def add(pattern: str) -> None:
+        if pattern and pattern not in patterns:
+            patterns.append(pattern)
+
+    if normalized.endswith("/"):
+        base = normalized.rstrip("/")
+        if not base:
+            return ["**"]
+        add(f"{base}/**")
+        add(f"{base}/")
+        if not base.startswith("**/"):
+            add(f"**/{base}/**")
+            add(f"**/{base}/")
+        return patterns
+
+    add(normalized)
+    if not normalized.startswith("**/"):
+        add(f"**/{normalized}")
+
+    return patterns
 
 
 def expand_patterns(patterns: Iterable[str]) -> List[str]:
