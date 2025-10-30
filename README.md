@@ -158,6 +158,44 @@ gunicorn api.server:app -k uvicorn.workers.UvicornWorker \
 
 Make sure the `REPO2GPT_STORAGE_ROOT` directory is writable by the service account and, when authentication is enabled, store the API key securely (for example via environment-injected secrets).
 
+## MCP server
+
+Repo2GPT also exposes a [Model Context Protocol](https://modelcontextprotocol.io/) server that lets IDE agents such as OpenAI Codex and Anthropic Claude Code request fresh repository snapshots over JSON-RPC.
+
+### Configuration
+
+Set the following environment variables before launching the server:
+
+- `REPO2GPT_GITHUB_PAT` (or `GITHUB_TOKEN` / `GITHUB_PAT`) – optional GitHub personal access token for cloning private repositories.
+- `REPO2GPT_GEMINI_API_KEY` (or `GEMINI_API_KEY` / `GOOGLE_API_KEY`) – optional Gemini File API credentials for downstream tooling.
+- `REPO2GPT_GEMINI_MODEL` – override the default Gemini model identifier advertised to clients.
+
+### Running alongside the API
+
+Install dependencies with `pip install -r requirements.txt`, then start both services in separate terminals:
+
+```bash
+uvicorn api.server:app --host 0.0.0.0 --port 8000  # REST API for background jobs
+uvicorn integrations.mcp.server:app --host 0.0.0.0 --port 3030  # MCP endpoint for IDE agents
+```
+
+The MCP server listens for JSON-RPC requests on `/` and offers three tools via `listTools`:
+
+- `processRepo` – clone or read a repository and return repo map + chunk artifacts.
+- `listRecentJobs` – enumerate the most recent MCP jobs and their artifact descriptors.
+- `getArtifact` – fetch the contents of a previously produced artifact.
+
+Use the `GET /healthz` endpoint on either service for basic readiness checks.
+
+### Registering with Codex and Claude Code
+
+Once the MCP server is running, register it with your editor or hosted agent:
+
+1. **OpenAI Codex** – open the Codex tool configuration panel, choose **Add MCP endpoint**, and supply the server URL (`http://localhost:3030/`). Codex will call `initialize`, `listTools`, and then invoke `callTool` as you issue prompts.
+2. **Anthropic Claude Code** – from the Claude Code sidebar choose **Custom tools → Connect endpoint**, enter the same URL, and confirm. Claude Code will immediately list the available tools and let you trigger `processRepo` from chat.
+
+Both clients automatically reuse the job identifiers returned by `processRepo` so you can later call `listRecentJobs` or `getArtifact` during the same session.
+
 ## Future plans
 
 - Add ASM traversal and mapping similar to ctags.
