@@ -7,7 +7,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from main import write_file_structure_summary  # noqa: E402
+from repo2gpt.service import write_file_structure_summary  # noqa: E402
 
 
 @pytest.mark.parametrize(

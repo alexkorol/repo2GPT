@@ -4,7 +4,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from main import (  # noqa: E402
+from repo2gpt.service import (  # noqa: E402
     ALWAYS_INCLUDE_FILENAMES,
     ProcessingOptions,
     is_binary_file,
