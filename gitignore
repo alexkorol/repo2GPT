@@ -7,5 +7,9 @@ __pycache__
 .Python
 env/
 venv/
+node_modules/
+web/node_modules/
+web/dist/
+web/.vite/
 *.log
 .ipynb_checkpoints

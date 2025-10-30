@@ -116,6 +116,25 @@ The endpoint responds immediately with a job identifier while processing continu
 
 SSE streams emit `status`, `progress`, `chunk`, `repomap`, and `tokens` events, each carrying structured JSON data. The server keeps connections alive with heartbeat comments so browsers do not time out on long-running repositories.
 
+## Web control panel
+
+The `web/` directory hosts a Vite + React dashboard that wraps the API with a friendly interface:
+
+- Submit jobs from Git URLs, downloadable archives, or uploaded tar/zip bundles.
+- Watch live progress updates rendered from the SSE stream, including per-chunk token counts.
+- Preview the generated repo map and chunk contents, copy a shareable job link, or download the entire artifact bundle as a ZIP file.
+- Trigger a Gemini File API upload using a stored access token and view success/error feedback inline.
+
+The UI stores the API base URL, API token, and Gemini credentials in `localStorage`. To run it locally:
+
+```bash
+cd web
+npm install
+npm run dev
+```
+
+Pass the same API token that you configured on the FastAPI service. For production builds, run `npm run build` and serve the contents of `web/dist/` alongside the API (see [docs/deployment.md](docs/deployment.md) for hosting suggestions).
+
 ### Authentication
 
 Set the `REPO2GPT_API_KEY` environment variable to enforce API-key based authentication. When configured, every request must include an `X-API-Key` header that matches the configured secret. Leave the variable unset for unauthenticated local development.
