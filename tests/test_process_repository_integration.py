@@ -26,6 +26,7 @@ def _build_args(repomap_path: Path, consolidated_path: Path) -> argparse.Namespa
         extra_ignore=None,
         extra_include=None,
         extra_extensions=None,
+        include="code",
         max_file_bytes=DEFAULT_MAX_FILE_BYTES,
         include_all=False,
         enable_token_counts=False,
@@ -85,3 +86,30 @@ def test_process_repository_generates_expected_outputs(tmp_path: Path):
     assert snapshot.repo_map_text == repomap_content
     assert snapshot.chunks[0].content == consolidated_content
     assert snapshot.chunks[0].file_count == 1
+
+
+def test_include_flag_allows_non_code(tmp_path: Path):
+    repo_dir = tmp_path / "docs_only_repo"
+    repo_dir.mkdir()
+
+    (repo_dir / "index.html").write_text("<h1>Docs</h1>", encoding="utf-8")
+    (repo_dir / "README.md").write_text("# Docs Repo\n", encoding="utf-8")
+
+    repomap_path = repo_dir / "repomap.txt"
+    consolidated_path = repo_dir / "consolidated_code.txt"
+
+    args = _build_args(repomap_path, consolidated_path)
+    args.include = "all"
+
+    result = process_repository(str(repo_dir), args)
+
+    repomap_content = Path(result.repomap_path).read_text(encoding="utf-8")
+    consolidated_content = Path(result.consolidated_chunks[0].path).read_text(
+        encoding="utf-8"
+    )
+
+    assert "index.html" in repomap_content
+    assert "README.md" in repomap_content
+    assert "<h1>Docs</h1>" in consolidated_content
+    assert "# Docs Repo" in consolidated_content
+    assert result.consolidated_chunks[0].file_count == 2

@@ -73,6 +73,8 @@ def build_processing_options(local_dir: str, args: argparse.Namespace) -> Proces
     include_patterns = _ordered_unique(include_patterns)
 
     max_file_bytes = args.max_file_bytes if args.max_file_bytes and args.max_file_bytes > 0 else None
+    include_mode = getattr(args, "include", "code")
+    allow_non_code = bool(getattr(args, "include_all", False)) or include_mode == "all"
 
     return ProcessingOptions(
         ignore_patterns=ignore_patterns,
@@ -80,7 +82,7 @@ def build_processing_options(local_dir: str, args: argparse.Namespace) -> Proces
         allowed_extensions=allowed_extensions,
         special_filenames=ALWAYS_INCLUDE_FILENAMES,
         max_file_bytes=max_file_bytes,
-        allow_non_code=args.include_all,
+        allow_non_code=allow_non_code,
     )
 
 
@@ -292,6 +294,12 @@ def parse_arguments(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         help="Additional file extensions to treat as code.",
     )
     parser.add_argument(
+        "--include",
+        choices=("code", "all"),
+        default="code",
+        help="Choose 'all' to include non-code files (alias for --include-all).",
+    )
+    parser.add_argument(
         "--max-file-bytes",
         type=int,
         default=DEFAULT_MAX_FILE_BYTES,
@@ -313,7 +321,10 @@ def parse_arguments(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         default=0,
         help="Split consolidated output into chunks capped at approximately this many tokens (default: %(default)s, 0 disables).",
     )
-    return parser.parse_args(argv if argv is not None else sys.argv[1:])
+    args = parser.parse_args(argv if argv is not None else sys.argv[1:])
+    if args.include_all:
+        args.include = "all"
+    return args
 
 
 def main(argv: Optional[Sequence[str]] = None) -> None:
